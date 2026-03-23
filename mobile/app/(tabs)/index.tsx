@@ -5,8 +5,8 @@ import { socket } from '../utils/socket';
 import PostLogModal from '../components/PostLogModal';
 import JoinProjectModal from '../components/JoinProjectModal';
 
-// Using localhost for now. In iOS emulator it's localhost:3000, Android is 10.0.2.2:3000
-const API_URL = 'http://localhost:3000/api';
+// Using localhost for now. In iOS emulator it's 10.166.59.26:3001, Android is 10.0.2.2:3000
+const API_URL = 'http://10.166.59.26:3001/api';
 
 const timeAgo = (dateStr: string) => {
   const diff = Date.now() - new Date(dateStr).getTime();

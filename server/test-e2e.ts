@@ -6,8 +6,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const prisma = new PrismaClient();
-const API_URL = 'http://localhost:3000/api';
-const SOCKET_URL = 'http://localhost:3000';
+const API_URL = 'http://localhost:3001/api';
+const SOCKET_URL = 'http://localhost:3001';
 
 async function request(path: string, method = 'GET', body?: any, headers?: any) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -25,7 +25,24 @@ async function runTest() {
 
   try {
     // 1. Cleanup specific emails to ensure clean run
-    await prisma.user.deleteMany({ where: { email: { in: ['alice@unico.edu', 'bob@unico.edu'] } } });
+    const testUsers = await prisma.user.findMany({ where: { email: { in: ['alice@unico.edu', 'bob@unico.edu'] } } });
+    const testUserIds = testUsers.map(u => u.id);
+    if (testUserIds.length > 0) {
+      // Find projects owned by test users
+      const testProjects = await prisma.project.findMany({ where: { createdBy: { in: testUserIds } } });
+      const testProjectIds = testProjects.map(p => p.id);
+      if (testProjectIds.length > 0) {
+        await prisma.message.deleteMany({ where: { projectId: { in: testProjectIds } } });
+        await prisma.progressLog.deleteMany({ where: { projectId: { in: testProjectIds } } });
+        await prisma.follower.deleteMany({ where: { projectId: { in: testProjectIds } } });
+        await prisma.projectMember.deleteMany({ where: { projectId: { in: testProjectIds } } });
+        await prisma.project.deleteMany({ where: { id: { in: testProjectIds } } });
+      }
+      // Also clean memberships in other projects
+      await prisma.projectMember.deleteMany({ where: { userId: { in: testUserIds } } });
+      await prisma.progressLog.deleteMany({ where: { userId: { in: testUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: testUserIds } } });
+    }
 
     // 2. User A (Alice): Sign up
     console.log('👤 [User A] Alice registering...');

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, SafeAreaView, FlatList, ActivityIndicator, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'http://10.166.59.26:3001/api';
 
 export default function SearchScreen() {
   const router = useRouter();

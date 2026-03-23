@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { prisma, io } from '../index';
+import { prisma } from '../app';
+import { getIO } from '../socket';
 import { authenticate, AuthRequest } from '../middleware/authMiddleware';
 
 const router = Router();
@@ -45,9 +46,9 @@ router.post('/:projectId', authenticate, async (req: AuthRequest, res) => {
     });
 
     // Emit event to project room
-    io.to(`project_${projectId}`).emit('new_progress_log', log);
+    getIO()?.to(`project_${projectId}`).emit('new_progress_log', log);
     // Emit globally for feed
-    io.emit('feed_update', log);
+    getIO()?.emit('feed_update', log);
 
     // Update project lastUpdated
     await prisma.project.update({

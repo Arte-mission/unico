@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicat
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { socket } from '../utils/socket';
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'http://10.166.59.26:3001/api';
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams();

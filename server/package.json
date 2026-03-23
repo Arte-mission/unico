@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "npx prisma generate && tsc && npx prisma migrate deploy",
+    "vercel-build": "npx prisma generate",
     "start": "node dist/index.js",
     "dev": "npx tsx src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"

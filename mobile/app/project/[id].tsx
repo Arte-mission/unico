@@ -5,7 +5,7 @@ import { socket } from '../utils/socket';
 import JoinProjectModal from '../components/JoinProjectModal';
 import PostLogModal from '../components/PostLogModal';
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'http://10.166.59.26:3001/api';
 
 export default function ProjectDetailsScreen() {
   const { id } = useLocalSearchParams();

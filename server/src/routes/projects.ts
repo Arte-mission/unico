@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { prisma, io } from '../index';
+import { prisma } from '../app';
+import { getIO } from '../socket';
 import { authenticate, AuthRequest } from '../middleware/authMiddleware';
 
 const router = Router();
@@ -107,14 +108,14 @@ router.post('/:id/join', authenticate, async (req: AuthRequest, res) => {
       include: { user: { select: { id: true, name: true } } }
     });
 
-    io.to(`project_${req.params.id}`).emit('member_joined', member);
+    getIO()?.to(`project_${req.params.id}`).emit('member_joined', member);
     
     // Also emit globally so the feed can update follower/member counts
     const updatedProject = await prisma.project.findUnique({
       where: { id: String(req.params.id) },
       include: { members: true }
     });
-    io.emit('project_updated', updatedProject);
+    getIO()?.emit('project_updated', updatedProject);
 
     res.status(201).json(member);
   } catch (error) {
