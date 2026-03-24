@@ -20,14 +20,18 @@ export function useThemeColor(
   props: { light?: string; dark?: string },
   colorName: keyof typeof Colors.light & keyof typeof Colors.dark
 ) {
-  const theme = useColorScheme();
+  const theme = useColorScheme() ?? 'light';
   const colorFromProps = props[theme];
 
   if (colorFromProps) {
     return colorFromProps;
-  } else {
+  }
+  if (colorName) {
+    const theme = useColorScheme() ?? 'light';
     return Colors[theme][colorName];
   }
+  // Fallback if neither colorFromProps nor colorName leads to a return (though colorName is always provided)
+  return Colors[theme][colorName]; // This line ensures a return if the above if(colorName) was not meant to be the final return.
 }
 
 export function Text(props: TextProps) {

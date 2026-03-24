@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Image, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { socket } from '../utils/socket';
+import { API_URL } from '../../utils/constants';
+import { socket } from '../../utils/socket';
 import JoinProjectModal from '../components/JoinProjectModal';
 import PostLogModal from '../components/PostLogModal';
-
-const API_URL = 'http://10.166.59.26:3001/api';
 
 export default function ProjectDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -56,8 +55,6 @@ export default function ProjectDetailsScreen() {
       if (res.ok) {
         const data = await res.json();
         setProject(data);
-        // Note: For MVP mock logic, we might not know if current user is following natively without decoding token.
-        // We will default to false for now, let's assume `data.followers` check happens purely local for demo
         setIsFollowing(data.followers?.length > 0 ? false : false); 
       }
     } catch (e) {
@@ -71,7 +68,7 @@ export default function ProjectDetailsScreen() {
     try {
       const res = await fetch(`${API_URL}/projects/${id}/join`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_MOCK_TOKEN' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' },
         body: JSON.stringify({ role, commitmentLevel })
       });
       if (res.ok) {
@@ -90,7 +87,7 @@ export default function ProjectDetailsScreen() {
     try {
       await fetch(`${API_URL}/logs/${id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_MOCK_TOKEN' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' },
         body: JSON.stringify({ content, mediaUrl })
       });
     } catch (e) {
@@ -103,7 +100,7 @@ export default function ProjectDetailsScreen() {
     try {
       const res = await fetch(`${API_URL}/projects/${id}/follow`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_MOCK_TOKEN' }
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' }
       });
       if (res.ok) {
         const data = await res.json();
@@ -128,13 +125,12 @@ export default function ProjectDetailsScreen() {
         <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2">
           <Text className="text-accent font-bold text-lg">← Back</Text>
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-textPrimary flex-1" numberOfLines={1}>{project.title}</Text>
+        <Text className="text-xl font-bold text-white flex-1" numberOfLines={1}>{project.title}</Text>
       </View>
 
       <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
-        {/* Overview Section */}
         <View className="bg-secondary p-5 rounded-3xl shadow-md border border-gray-800 mb-6">
-          <Text className="text-2xl font-bold text-textPrimary mb-2">{project.title}</Text>
+          <Text className="text-2xl font-bold text-white mb-2">{project.title}</Text>
           <Text className="text-sm text-gray-400 mb-4">Led by {project.owner?.name}</Text>
           <Text className="text-base text-gray-300 font-sans leading-6">{project.description}</Text>
           
@@ -162,7 +158,6 @@ export default function ProjectDetailsScreen() {
           </View>
         </View>
 
-        {/* Team Members Section */}
         <Text className="text-lg font-bold text-white mb-3 mt-2 px-1">Team Members ({project.members?.length || 0})</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6">
           {project.members?.map((m: any, idx: number) => (
@@ -171,13 +166,12 @@ export default function ProjectDetailsScreen() {
               className="bg-gray-800 px-4 py-2 rounded-2xl mr-3 border border-gray-700"
               onPress={() => router.push({ pathname: '/profile/[id]', params: { id: m.userId } } as any)}
             >
-              <Text className="text-textPrimary font-semibold">{m.user?.name || 'Anonymous'}</Text>
+              <Text className="text-white font-semibold">{m.user?.name || 'Anonymous'}</Text>
               <Text className="text-accent text-xs">{m.role}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* Open Roles Section */}
         <Text className="text-lg font-bold text-white mb-3 px-1">Open Roles</Text>
         <View className="mb-6 flex-row flex-wrap">
           {['Frontend Dev', 'UI/UX Designer', 'Growth Marketer'].map((role, i) => (
@@ -187,7 +181,6 @@ export default function ProjectDetailsScreen() {
           ))}
         </View>
 
-        {/* Progress Timeline Section */}
         <View className="flex-row justify-between items-center mb-4 px-1">
           <Text className="text-lg font-bold text-white">Progress Logs</Text>
           <TouchableOpacity onPress={() => setPostModalVisible(true)}>
@@ -206,7 +199,7 @@ export default function ProjectDetailsScreen() {
               <View className="flex-1 bg-secondary p-4 rounded-2xl border border-gray-800 shadow-sm">
                 <View className="flex-row justify-between items-start mb-2">
                   <TouchableOpacity onPress={() => router.push({ pathname: '/profile/[id]', params: { id: log.userId } } as any)}>
-                    <Text className="font-bold text-textPrimary">{log.user?.name || 'Builder'}</Text>
+                    <Text className="font-bold text-white">{log.user?.name || 'Builder'}</Text>
                   </TouchableOpacity>
                   <Text className="text-xs text-gray-500">{new Date(log.createdAt).toLocaleDateString()}</Text>
                 </View>

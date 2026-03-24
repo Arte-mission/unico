@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { socket } from '../utils/socket';
-
-const API_URL = 'http://10.166.59.26:3001/api';
+import { API_URL } from '../../utils/constants';
+import { socket } from '../../utils/socket';
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams();

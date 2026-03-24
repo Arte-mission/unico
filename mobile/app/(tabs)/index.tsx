@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { socket } from '../utils/socket';
+import { socket } from '../../utils/socket';
+import { API_URL } from '../../utils/constants';
 import PostLogModal from '../components/PostLogModal';
 import JoinProjectModal from '../components/JoinProjectModal';
-
-// Using localhost for now. In iOS emulator it's 10.166.59.26:3001, Android is 10.0.2.2:3000
-const API_URL = 'http://10.166.59.26:3001/api';
 
 const timeAgo = (dateStr: string) => {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -25,12 +23,10 @@ export default function FeedScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isConnected, setIsConnected] = useState(socket.connected);
   
-  // Post Log Modal State
   const [postModalVisible, setPostModalVisible] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
-
-  // Join Project Modal State
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joinProjectId, setJoinProjectId] = useState<string | undefined>(undefined);
   const [joinProjectTitle, setJoinProjectTitle] = useState<string | undefined>(undefined);
@@ -38,10 +34,13 @@ export default function FeedScreen() {
   useEffect(() => {
     fetchProjects(1, true);
 
-    // Socket.io Real-time update listener for new progress logs
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+
     socket.on('feed_update', (newLog: any) => {
-      console.log('New log on feed:', newLog);
-      
       setProjects(prevProjects => {
         const index = prevProjects.findIndex(p => p.id === newLog.projectId);
         if (index === -1) return prevProjects;
@@ -55,21 +54,26 @@ export default function FeedScreen() {
       });
     });
 
-    // Socket.io listener for project updates (like new members joining)
     socket.on('project_updated', (updatedProject: any) => {
       setProjects(prevProjects => {
         const index = prevProjects.findIndex(p => p.id === updatedProject.id);
         if (index === -1) return prevProjects;
         const newProjects = [...prevProjects];
-        // Merge the updated members count while keeping current feed logs state 
         newProjects[index] = { ...newProjects[index], members: updatedProject.members };
         return newProjects;
       });
     });
 
+    socket.on('new_project_created', (project: any) => {
+      setProjects((prev: any) => [project, ...prev]);
+    });
+
     return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
       socket.off('feed_update');
       socket.off('project_updated');
+      socket.off('new_project_created');
     };
   }, []);
 
@@ -85,7 +89,6 @@ export default function FeedScreen() {
         if (isRefresh) {
           setProjects(data);
         } else {
-          // Prevent duplicates when appending
           setProjects(prev => {
             const existingIds = new Set(prev.map(p => p.id));
             const newProjects = data.filter((d: any) => !existingIds.has(d.id));
@@ -95,7 +98,6 @@ export default function FeedScreen() {
       }
     } catch (e) {
       console.error('Failed to fetch projects', e);
-      Alert.alert('Error', 'Failed to load feed.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -116,21 +118,13 @@ export default function FeedScreen() {
   };
 
   const handlePostLog = async (content: string, mentions: string[], mediaUrl?: string) => {
-    if (!selectedProjectId) {
-      Alert.alert("Error", "Please select a project to post to.");
-      return;
-    }
-    
+    if (!selectedProjectId) return;
     try {
-      const res = await fetch(`${API_URL}/logs/${selectedProjectId}`, {
+      await fetch(`${API_URL}/logs/${selectedProjectId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer YOUR_MOCK_TOKEN' // Mock token for demo
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' },
         body: JSON.stringify({ content, mediaUrl })
       });
-      // The socket event will auto-update the feed if successful
     } catch (e) {
       console.error(e);
       Alert.alert('Error', 'Failed to post progress log.');
@@ -139,22 +133,14 @@ export default function FeedScreen() {
 
   const handleJoinProject = async (role: string, commitmentLevel: string) => {
     if (!joinProjectId) return;
-    
     try {
       const res = await fetch(`${API_URL}/projects/${joinProjectId}/join`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer YOUR_MOCK_TOKEN' // Mock token for demo
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' },
         body: JSON.stringify({ role, commitmentLevel })
       });
-      
       if (res.ok) {
         Alert.alert('Success', `You successfully joined ${joinProjectTitle}!`);
-      } else {
-        const data = await res.json();
-        Alert.alert('Notice', data.error || 'Could not join project.');
       }
     } catch (e) {
       console.error(e);
@@ -176,7 +162,15 @@ export default function FeedScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="px-6 pt-4 pb-2 border-b border-gray-800 flex-row justify-between items-center">
-        <Text className="text-2xl font-bold text-textPrimary">Project Feed</Text>
+        <View>
+          <Text className="text-2xl font-bold text-white">Project Feed</Text>
+          <View className="flex-row items-center mt-1">
+            <View className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
+              {isConnected ? 'Server Connected' : 'Server Disconnected'}
+            </Text>
+          </View>
+        </View>
       </View>
 
       {loading && page === 1 ? (
@@ -185,10 +179,6 @@ export default function FeedScreen() {
         <FlatList 
           data={projects}
           keyExtractor={item => item.id}
-          initialNumToRender={5}
-          maxToRenderPerBatch={5}
-          windowSize={10}
-          removeClippedSubviews={true}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           onRefresh={onRefresh}
@@ -208,53 +198,45 @@ export default function FeedScreen() {
                 </View>
 
                 <View className="flex-row justify-between items-start mb-2">
-                  <Text className="text-xl font-bold text-textPrimary flex-1 mr-2">{item.title}</Text>
-                  <Text className="text-xs text-gray-400 font-semibold">
-                    {timeAgo(item.lastUpdated)}
-                  </Text>
+                  <Text className="text-xl font-bold text-white flex-1 mr-2">{item.title}</Text>
+                  <Text className="text-xs text-gray-400 font-semibold">{timeAgo(item.lastUpdated)}</Text>
                 </View>
-              <Text className="text-gray-300 mb-2 font-sans">{item.description}</Text>
-              
-              {/* Latest Progress Log Snippet */}
-              {item.progressLogs?.length > 0 && (
-                <View className="bg-background/50 p-3 rounded-xl mb-4 border border-gray-700">
-                  <Text className="text-xs text-accent font-bold mb-1">Latest Update:</Text>
-                  <Text className="text-gray-300 text-sm" numberOfLines={2}>{item.progressLogs[0].content}</Text>
-                </View>
-              )}
-
-              <View className="flex-row justify-between items-center mt-2">
-                <View className="flex-row items-center space-x-2">
-                  <View className="flex-row items-center">
-                    {item.members?.slice(0, 3).map((m: any, i: number) => (
-                      <View key={i} style={{ zIndex: 10 - i }} className={`w-6 h-6 rounded-full bg-accent items-center justify-center border-2 border-secondary ${i > 0 ? '-ml-2' : ''}`}>
-                         <Text className="text-white text-[10px] font-bold">{m.user?.name?.charAt(0) || 'U'}</Text>
-                      </View>
-                    ))}
+                <Text className="text-gray-300 mb-2 font-sans">{item.description}</Text>
+                
+                {item.progressLogs?.length > 0 && (
+                  <View className="bg-background/50 p-3 rounded-xl mb-4 border border-gray-700">
+                    <Text className="text-xs text-accent font-bold mb-1">Latest Update:</Text>
+                    <Text className="text-gray-300 text-sm" numberOfLines={2}>{item.progressLogs[0].content}</Text>
                   </View>
-                  <View className="flex-row space-x-1">
+                )}
+
+                <View className="flex-row justify-between items-center mt-2">
+                  <View className="flex-row items-center space-x-2">
+                    <View className="flex-row items-center">
+                      {item.members?.slice(0, 3).map((m: any, i: number) => (
+                        <View key={i} style={{ zIndex: 10 - i }} className={`w-6 h-6 rounded-full bg-accent items-center justify-center border-2 border-secondary ${i > 0 ? '-ml-2' : ''}`}>
+                           <Text className="text-white text-[10px] font-bold">{m.user?.name?.charAt(0) || 'U'}</Text>
+                        </View>
+                      ))}
+                    </View>
                     <View className="bg-background px-2 py-1 rounded-md">
                       <Text className="text-[10px] text-gray-400 font-semibold">{item.members?.length || 1} joined</Text>
                     </View>
-                    <View className="bg-background px-2 py-1 rounded-md">
-                      <Text className="text-[10px] text-gray-400 font-semibold">{item._count?.progressLogs || item.progressLogs?.length || 0} updates</Text>
-                    </View>
                   </View>
-                </View>
-                <View className="flex-row space-x-2">
-                  <TouchableOpacity 
-                    className="bg-gray-700 px-4 py-2 rounded-full"
-                    onPress={() => router.push({ pathname: '/project/[id]', params: { id: item.id } } as any)}
-                  >
-                    <Text className="text-white text-sm font-semibold">View</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    className="bg-accent px-4 py-2 rounded-full shadow-sm"
-                    onPress={() => openJoinModal(item.id, item.title)}
-                  >
-                    <Text className="text-white text-sm font-semibold">Join</Text>
-                  </TouchableOpacity>
-                </View>
+                  <View className="flex-row space-x-2">
+                    <TouchableOpacity 
+                      className="bg-gray-700 px-4 py-2 rounded-full"
+                      onPress={() => router.push({ pathname: '/project/[id]', params: { id: item.id } } as any)}
+                    >
+                      <Text className="text-white text-sm font-semibold">View</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      className="bg-accent px-4 py-2 rounded-full shadow-sm"
+                      onPress={() => openJoinModal(item.id, item.title)}
+                    >
+                      <Text className="text-white text-sm font-semibold">Join</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             );
@@ -262,7 +244,6 @@ export default function FeedScreen() {
         />
       )}
 
-      {/* global FAB for Posting an Update without selecting from card initially */}
       <TouchableOpacity 
         className="absolute bottom-6 right-6 bg-accent px-5 py-3 rounded-full flex-row items-center shadow-lg border border-accent/80"
         onPress={() => openPostModal(projects[0]?.id)}
@@ -271,19 +252,8 @@ export default function FeedScreen() {
         <Text className="text-white font-bold text-sm">Post Update</Text>
       </TouchableOpacity>
 
-      <PostLogModal 
-        visible={postModalVisible} 
-        onClose={() => setPostModalVisible(false)} 
-        onSubmit={handlePostLog}
-        projectId={selectedProjectId}
-      />
-
-      <JoinProjectModal
-        visible={joinModalVisible}
-        onClose={() => setJoinModalVisible(false)}
-        onSubmit={handleJoinProject}
-        projectTitle={joinProjectTitle}
-      />
+      <PostLogModal visible={postModalVisible} onClose={() => setPostModalVisible(false)} onSubmit={handlePostLog} projectId={selectedProjectId} />
+      <JoinProjectModal visible={joinModalVisible} onClose={() => setJoinModalVisible(false)} onSubmit={handleJoinProject} projectTitle={joinProjectTitle} />
     </SafeAreaView>
   );
 }
