@@ -9,7 +9,7 @@
     "jsx": "react-native",
     "lib": ["DOM", "ESNext"],
     "skipLibCheck": true,
-    "moduleResolution": "node"
+    "moduleResolution": "bundler"
   },
   "include": [
     "**/*.ts",

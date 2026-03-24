@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicat
 import { useRouter } from 'expo-router';
 import { socket } from '../utils/socket';
 
-const API_URL = 'http://10.126.167.233:3001/api';
+import { API_URL } from '../../utils/constants';
 
 export default function MyProfileScreen() {
   const router = useRouter();

@@ -83,7 +83,7 @@ async function runTest() {
     const bobSocket = Client(SOCKET_URL);
 
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     // Subscribe to events
     let eventsCaught = {
       project_updated: false,
@@ -133,12 +133,12 @@ async function runTest() {
 
     // 9. Validation
     console.log('\n📊 Validating System State...');
-    
+
     const dbProject = await prisma.project.findUnique({
       where: { id: projectId },
       include: { members: true, progressLogs: true }
     });
-    
+
     const bobProfile = await prisma.user.findUnique({
       where: { id: bobRes.user.id },
       include: { memberships: true }
