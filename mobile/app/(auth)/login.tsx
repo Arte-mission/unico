@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, SafeAreaView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { API_URL } from '../../utils/constants';
+import { apiRequest } from '../../utils/api';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -17,29 +18,23 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
+      const data = await apiRequest('/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-
-      if (res.ok) {
-        // In a real app we'd save the token here
+      if (data) {
         router.replace('/(tabs)');
-      } else {
-        const data = await res.json();
-        Alert.alert('Login Failed', data.error || 'Invalid credentials');
       }
     } catch (e) {
       console.error(e);
-      Alert.alert('Connection Error', 'Could not connect to the server at ' + API_URL);
+      // apiRequest handles generic alerts
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background justify-center p-6">
+    <SafeAreaView className="flex-1 bg-background justify-center p-6" style={{ backgroundColor: '#0B0F1A' }}>
       <View className="flex items-center mb-10 mt-10">
         <Text className="text-4xl font-extrabold text-white tracking-tight">Unico.</Text>
         <Text className="text-gray-400 mt-3 text-center text-sm px-6 font-semibold">The network-of-networks where student builders prove execution through radical transparency.</Text>

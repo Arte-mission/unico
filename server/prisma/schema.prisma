@@ -9,53 +9,50 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  phone     String?
-  university String  @default("Macquarie University")
-  skills    String   @default("[]") // Stored as JSON string
-  intent    String?  // Build/Learn/Explore
-  createdAt DateTime @default(now())
-
-  // Relations
-  projectsOwned Project[] @relation("ProjectOwner")
-  memberships   ProjectMember[]
-  progressLogs  ProgressLog[]
-  following     Follower[]
-  sentMessages  Message[] @relation("MessageSender")
-  connectionsFrom Connection[] @relation("ConnectionFrom")
-  connectionsTo   Connection[] @relation("ConnectionTo")
+  id              String          @id @default(uuid())
+  name            String
+  email           String          @unique
+  password        String
+  phone           String?
+  university      String          @default("Macquarie University")
+  skills          String          @default("[]")
+  intent          String?
+  createdAt       DateTime        @default(now())
+  bio             String          @default("")
+  lastActive      DateTime        @default(now())
+  connectionsTo   Connection[]    @relation("ConnectionTo")
+  connectionsFrom Connection[]    @relation("ConnectionFrom")
+  joinRequests    JoinRequest[]
+  sentMessages    Message[]       @relation("MessageSender")
+  progressLogs    ProgressLog[]
+  projectsOwned   Project[]       @relation("ProjectOwner")
+  memberships     ProjectMember[]
 }
 
 model Project {
-  id          String   @id @default(uuid())
-  title       String
-  description String
-  createdBy   String
-  createdAt   DateTime @default(now())
-  lastUpdated DateTime @default(now()) @updatedAt
-
-  // Relations
-  owner       User     @relation("ProjectOwner", fields: [createdBy], references: [id])
-  members     ProjectMember[]
-  progressLogs ProgressLog[]
-  followers   Follower[]
-  messages    Message[] @relation("ProjectMessages")
+  id              String          @id @default(uuid())
+  title           String
+  description     String
+  createdBy       String
+  createdAt       DateTime        @default(now())
+  lastUpdated     DateTime        @default(now()) @updatedAt
+  validationScore Float           @default(0)
+  joinRequests    JoinRequest[]
+  messages        Message[]       @relation("ProjectMessages")
+  progressLogs    ProgressLog[]
+  owner           User            @relation("ProjectOwner", fields: [createdBy], references: [id])
+  members         ProjectMember[]
 }
 
 model ProjectMember {
   id              String   @id @default(uuid())
   userId          String
   projectId       String
-  role            String   // e.g., "Developer", "Designer", "Founder"
-  commitmentLevel String?  // e.g., "Part-time", "Full-time"
+  role            String
+  commitmentLevel String?
   joinedAt        DateTime @default(now())
-
-  // Relations
-  user    User    @relation(fields: [userId], references: [id])
-  project Project @relation(fields: [projectId], references: [id])
+  project         Project  @relation(fields: [projectId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, projectId])
 }
@@ -67,21 +64,20 @@ model ProgressLog {
   content   String
   mediaUrl  String?
   createdAt DateTime @default(now())
-
-  // Relations
-  project Project @relation(fields: [projectId], references: [id])
-  user    User    @relation(fields: [userId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
-model Follower {
-  id        String   @id @default(uuid())
-  userId    String
-  projectId String
-  createdAt DateTime @default(now())
-
-  // Relations
-  user    User    @relation(fields: [userId], references: [id])
-  project Project @relation(fields: [projectId], references: [id])
+model JoinRequest {
+  id           String   @id @default(uuid())
+  userId       String
+  projectId    String
+  message      String
+  contribution String
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now())
+  project      Project  @relation(fields: [projectId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, projectId])
 }
@@ -89,26 +85,22 @@ model Follower {
 model Message {
   id         String   @id @default(uuid())
   senderId   String
-  receiverId String?  // User ID for DM, can be null if projectId is set
-  projectId  String?  // For project group chats
+  receiverId String?
+  projectId  String?
   content    String
   createdAt  DateTime @default(now())
-
-  // Relations
-  sender  User     @relation("MessageSender", fields: [senderId], references: [id])
-  project Project? @relation("ProjectMessages", fields: [projectId], references: [id])
+  project    Project? @relation("ProjectMessages", fields: [projectId], references: [id])
+  sender     User     @relation("MessageSender", fields: [senderId], references: [id])
 }
 
 model Connection {
   id              String   @id @default(uuid())
   userId          String
   connectedUserId String
-  strengthScore   Int      @default(0) // Mock AI score
+  strengthScore   Int      @default(0)
   createdAt       DateTime @default(now())
-
-  // Relations
-  user          User @relation("ConnectionFrom", fields: [userId], references: [id])
-  connectedUser User @relation("ConnectionTo", fields: [connectedUserId], references: [id])
+  connectedUser   User     @relation("ConnectionTo", fields: [connectedUserId], references: [id])
+  user            User     @relation("ConnectionFrom", fields: [userId], references: [id])
 
   @@unique([userId, connectedUserId])
 }

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback, memo } from 'react';
+import { View, Text, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { socket } from '../../utils/socket';
-import { API_URL } from '../../utils/constants';
+import { apiRequest } from '../../utils/api';
 import PostLogModal from '../components/PostLogModal';
-import JoinProjectModal from '../components/JoinProjectModal';
+import CreateProjectModal from '../components/CreateProjectModal';
 
 const timeAgo = (dateStr: string) => {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -16,23 +16,88 @@ const timeAgo = (dateStr: string) => {
   return `${days}d ago`;
 };
 
+const ProjectItem = memo(({ item, router }: { item: any, router: any }) => {
+  const isActive = Date.now() - new Date(item.lastUpdated).getTime() < 86400000;
+  const isNew = Date.now() - new Date(item.createdAt).getTime() < 86400000 * 2;
+
+  return (
+    <TouchableOpacity 
+      activeOpacity={0.9}
+      className="bg-secondary p-5 mb-4 rounded-3xl shadow-md border border-gray-800 relative"
+      onPress={() => router.push({ pathname: '/project/[id]', params: { id: item.id } } as any)}
+    >
+      <View className="flex-row justify-between items-center mb-3">
+        <View className="flex-row space-x-2">
+          {isActive && <View className="bg-red-500/20 px-2 py-0.5 rounded-md border border-red-500/50"><Text className="text-red-400 text-[10px] font-bold uppercase tracking-wider">🔥 Active</Text></View>}
+          <View className="bg-accent/20 px-2 py-0.5 rounded-md border border-accent/50">
+            <Text className="text-accent text-[10px] font-bold uppercase tracking-wider">Score: {item.validationScore || 0}</Text>
+          </View>
+        </View>
+        <Text className="text-[10px] text-gray-500 font-bold uppercase">{timeAgo(item.lastUpdated)}</Text>
+      </View>
+
+      <Text className="text-xl font-bold text-white mb-1">{item.title}</Text>
+      <Text className="text-gray-400 text-xs mb-3 font-semibold">{item.owner?.name} • {item.owner?.university}</Text>
+      <Text className="text-gray-300 mb-4 font-sans leading-5" numberOfLines={3}>{item.description}</Text>
+      
+      {item.progressLogs?.length > 0 && (
+        <View className="bg-background/40 p-3 rounded-2xl mb-4 border border-gray-700/50">
+          <Text className="text-[10px] text-accent font-bold mb-1 uppercase tracking-widest">Latest Progress</Text>
+          <Text className="text-gray-300 text-xs leading-4" numberOfLines={2}>{item.progressLogs[0].content}</Text>
+        </View>
+      )}
+
+      <View className="flex-row justify-between items-center">
+        <View className="flex-row items-center">
+          <View className="flex-row items-center mr-3">
+            {item.members?.slice(0, 3).map((m: any, i: number) => (
+              <View key={i} style={{ zIndex: 10 - i }} className={`w-7 h-7 rounded-full bg-accent items-center justify-center border-2 border-secondary ${i > 0 ? '-ml-2.5' : ''}`}>
+                 <Text className="text-white text-[10px] font-bold">{m.user?.name?.charAt(0) || 'U'}</Text>
+              </View>
+            ))}
+            {item.members?.length > 3 && (
+              <View className="w-7 h-7 rounded-full bg-gray-700 items-center justify-center border-2 border-secondary -ml-2.5">
+                <Text className="text-gray-400 text-[8px] font-bold">+{item.members.length - 3}</Text>
+              </View>
+            )}
+          </View>
+          <Text className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{item.members?.length || 1} Build Partners</Text>
+        </View>
+        
+        <TouchableOpacity 
+          className="bg-accent px-6 py-2 rounded-full"
+          onPress={() => router.push({ pathname: '/project/[id]', params: { id: item.id } } as any)}
+        >
+          <Text className="text-white text-xs font-bold">View</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export default function FeedScreen() {
   const router = useRouter();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isConnected, setIsConnected] = useState(socket.connected);
-  
-  const [postModalVisible, setPostModalVisible] = useState(false);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
-  const [joinModalVisible, setJoinModalVisible] = useState(false);
-  const [joinProjectId, setJoinProjectId] = useState<string | undefined>(undefined);
-  const [joinProjectTitle, setJoinProjectTitle] = useState<string | undefined>(undefined);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+
+  const fetchProjects = async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    try {
+      const data = await apiRequest(`/projects`);
+      setProjects(data);
+    } catch (e) {
+      console.error('Failed to fetch projects', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    fetchProjects(1, true);
+    fetchProjects();
 
     const onConnect = () => setIsConnected(true);
     const onDisconnect = () => setIsConnected(false);
@@ -40,33 +105,9 @@ export default function FeedScreen() {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
 
-    socket.on('feed_update', (newLog: any) => {
-      setProjects(prevProjects => {
-        const index = prevProjects.findIndex(p => p.id === newLog.projectId);
-        if (index === -1) return prevProjects;
-        
-        const project = { ...prevProjects[index] };
-        project.progressLogs = [newLog, ...(project.progressLogs || [])];
-        project.lastUpdated = new Date().toISOString();
-        
-        const filtered = prevProjects.filter(p => p.id !== newLog.projectId);
-        return [project, ...filtered];
-      });
-    });
-
-    socket.on('project_updated', (updatedProject: any) => {
-      setProjects(prevProjects => {
-        const index = prevProjects.findIndex(p => p.id === updatedProject.id);
-        if (index === -1) return prevProjects;
-        const newProjects = [...prevProjects];
-        newProjects[index] = { ...newProjects[index], members: updatedProject.members };
-        return newProjects;
-      });
-    });
-
-    socket.on('new_project_created', (project: any) => {
-      setProjects((prev: any) => [project, ...prev]);
-    });
+    socket.on('feed_update', () => fetchProjects());
+    socket.on('project_updated', () => fetchProjects());
+    socket.on('new_project_created', () => fetchProjects());
 
     return () => {
       socket.off('connect', onConnect);
@@ -77,183 +118,71 @@ export default function FeedScreen() {
     };
   }, []);
 
-  const fetchProjects = async (pageNum = 1, isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
+  const onRefresh = useCallback(() => {
+    fetchProjects(true);
+  }, []);
+
+  const handleCreateProject = async (title: string, description: string) => {
     try {
-      const res = await fetch(`${API_URL}/projects?page=${pageNum}&limit=5`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.length < 5) setHasMore(false);
-        else setHasMore(true);
-
-        if (isRefresh) {
-          setProjects(data);
-        } else {
-          setProjects(prev => {
-            const existingIds = new Set(prev.map(p => p.id));
-            const newProjects = data.filter((d: any) => !existingIds.has(d.id));
-            return [...prev, ...newProjects];
-          });
-        }
-      }
-    } catch (e) {
-      console.error('Failed to fetch projects', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const handleLoadMore = () => {
-    if (!loading && hasMore) {
-      const nextPage = page + 1;
-      setPage(nextPage);
-      fetchProjects(nextPage, false);
-    }
-  };
-
-  const onRefresh = () => {
-    setPage(1);
-    fetchProjects(1, true);
-  };
-
-  const handlePostLog = async (content: string, mentions: string[], mediaUrl?: string) => {
-    if (!selectedProjectId) return;
-    try {
-      await fetch(`${API_URL}/logs/${selectedProjectId}`, {
+      await apiRequest('/projects', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' },
-        body: JSON.stringify({ content, mediaUrl })
+        body: JSON.stringify({ title, description })
       });
+      onRefresh();
     } catch (e) {
       console.error(e);
-      Alert.alert('Error', 'Failed to post progress log.');
     }
   };
 
-  const handleJoinProject = async (role: string, commitmentLevel: string) => {
-    if (!joinProjectId) return;
-    try {
-      const res = await fetch(`${API_URL}/projects/${joinProjectId}/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' },
-        body: JSON.stringify({ role, commitmentLevel })
-      });
-      if (res.ok) {
-        Alert.alert('Success', `You successfully joined ${joinProjectTitle}!`);
-      }
-    } catch (e) {
-      console.error(e);
-      Alert.alert('Error', 'An error occurred while joining.');
-    }
-  };
-
-  const openPostModal = (projectId: string) => {
-    setSelectedProjectId(projectId);
-    setPostModalVisible(true);
-  };
-
-  const openJoinModal = (projectId: string, projectTitle: string) => {
-    setJoinProjectId(projectId);
-    setJoinProjectTitle(projectTitle);
-    setJoinModalVisible(true);
-  };
+  const renderItem = useCallback(({ item }: { item: any }) => (
+    <ProjectItem item={item} router={router} />
+  ), [router]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="px-6 pt-4 pb-2 border-b border-gray-800 flex-row justify-between items-center">
         <View>
-          <Text className="text-2xl font-bold text-white">Project Feed</Text>
+          <Text className="text-3xl font-bold text-white tracking-tight">Unico</Text>
           <View className="flex-row items-center mt-1">
             <View className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
             <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
-              {isConnected ? 'Server Connected' : 'Server Disconnected'}
+              {isConnected ? 'Real-time Feed' : 'Disconnected'}
             </Text>
           </View>
         </View>
       </View>
 
-      {loading && page === 1 ? (
-        <ActivityIndicator size="large" color="#6366F1" className="mt-10" />
+      {loading && projects.length === 0 ? (
+        <View className="flex-1 justify-center items-center">
+          <ActivityIndicator size="large" color="#6366F1" />
+        </View>
       ) : (
         <FlatList 
           data={projects}
           keyExtractor={item => item.id}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
           onRefresh={onRefresh}
           refreshing={refreshing}
-          ListFooterComponent={hasMore && projects.length > 0 ? <ActivityIndicator size="small" color="#6366F1" className="my-4" /> : null}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />}
           contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-          ListEmptyComponent={<Text className="text-gray-400 text-center mt-10">No projects found. Create one to get started!</Text>}
-          renderItem={({ item }) => {
-            const isNew = Date.now() - new Date(item.createdAt).getTime() < 86400000 * 2;
-            const isActive = Date.now() - new Date(item.lastUpdated).getTime() < 86400000;
-
-            return (
-              <View className="bg-secondary p-5 mb-4 rounded-3xl shadow-md border border-gray-800 relative">
-                <View className="flex-row space-x-2 mb-2">
-                  {isActive && <View className="bg-red-500/20 px-2 py-0.5 rounded-md border border-red-500/50"><Text className="text-red-400 text-[10px] font-bold uppercase tracking-wider">🔥 Active</Text></View>}
-                  {isNew && !isActive && <View className="bg-accent/20 px-2 py-0.5 rounded-md border border-accent/50"><Text className="text-accent text-[10px] font-bold uppercase tracking-wider">🌟 New</Text></View>}
-                </View>
-
-                <View className="flex-row justify-between items-start mb-2">
-                  <Text className="text-xl font-bold text-white flex-1 mr-2">{item.title}</Text>
-                  <Text className="text-xs text-gray-400 font-semibold">{timeAgo(item.lastUpdated)}</Text>
-                </View>
-                <Text className="text-gray-300 mb-2 font-sans">{item.description}</Text>
-                
-                {item.progressLogs?.length > 0 && (
-                  <View className="bg-background/50 p-3 rounded-xl mb-4 border border-gray-700">
-                    <Text className="text-xs text-accent font-bold mb-1">Latest Update:</Text>
-                    <Text className="text-gray-300 text-sm" numberOfLines={2}>{item.progressLogs[0].content}</Text>
-                  </View>
-                )}
-
-                <View className="flex-row justify-between items-center mt-2">
-                  <View className="flex-row items-center space-x-2">
-                    <View className="flex-row items-center">
-                      {item.members?.slice(0, 3).map((m: any, i: number) => (
-                        <View key={i} style={{ zIndex: 10 - i }} className={`w-6 h-6 rounded-full bg-accent items-center justify-center border-2 border-secondary ${i > 0 ? '-ml-2' : ''}`}>
-                           <Text className="text-white text-[10px] font-bold">{m.user?.name?.charAt(0) || 'U'}</Text>
-                        </View>
-                      ))}
-                    </View>
-                    <View className="bg-background px-2 py-1 rounded-md">
-                      <Text className="text-[10px] text-gray-400 font-semibold">{item.members?.length || 1} joined</Text>
-                    </View>
-                  </View>
-                  <View className="flex-row space-x-2">
-                    <TouchableOpacity 
-                      className="bg-gray-700 px-4 py-2 rounded-full"
-                      onPress={() => router.push({ pathname: '/project/[id]', params: { id: item.id } } as any)}
-                    >
-                      <Text className="text-white text-sm font-semibold">View</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      className="bg-accent px-4 py-2 rounded-full shadow-sm"
-                      onPress={() => openJoinModal(item.id, item.title)}
-                    >
-                      <Text className="text-white text-sm font-semibold">Join</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            );
-          }}
+          ListEmptyComponent={
+            <View className="items-center mt-20 px-10">
+              <Text className="text-gray-500 text-center text-lg italic">No projects found. Launch one!</Text>
+            </View>
+          }
+          renderItem={renderItem}
+          removeClippedSubviews={true}
+          initialNumToRender={5}
         />
       )}
 
       <TouchableOpacity 
-        className="absolute bottom-6 right-6 bg-accent px-5 py-3 rounded-full flex-row items-center shadow-lg border border-accent/80"
-        onPress={() => openPostModal(projects[0]?.id)}
+        className="absolute bottom-10 right-6 bg-accent px-6 py-4 rounded-3xl flex-row items-center shadow-2xl border border-white/10"
+        onPress={() => setCreateModalVisible(true)}
       >
-        <Text className="text-white text-lg font-extrabold mr-2">+</Text>
-        <Text className="text-white font-bold text-sm">Post Update</Text>
+        <Text className="text-white font-bold text-lg">Launch Project</Text>
       </TouchableOpacity>
 
-      <PostLogModal visible={postModalVisible} onClose={() => setPostModalVisible(false)} onSubmit={handlePostLog} projectId={selectedProjectId} />
-      <JoinProjectModal visible={joinModalVisible} onClose={() => setJoinModalVisible(false)} onSubmit={handleJoinProject} projectTitle={joinProjectTitle} />
+      <CreateProjectModal visible={createModalVisible} onClose={() => setCreateModalVisible(false)} onSubmit={handleCreateProject} />
     </SafeAreaView>
   );
 }

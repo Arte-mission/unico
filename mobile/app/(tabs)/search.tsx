@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, SafeAreaView, FlatList, ActivityIndicator, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { API_URL } from '../../utils/constants';
+import { apiRequest } from '../../utils/api';
 import { socket } from '../../utils/socket';
 
 export default function SearchScreen() {
@@ -20,11 +20,15 @@ export default function SearchScreen() {
   }, [query, filter]);
 
   const fetchSearchResults = async () => {
+    if (!query.trim()) {
+       setResults({ projects: [], users: [] });
+       return;
+    }
+
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&type=${filter}`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiRequest(`/search?q=${encodeURIComponent(query)}&type=${filter}`);
+      if (data) {
         setResults(data);
       }
     } catch (error) {

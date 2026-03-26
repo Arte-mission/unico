@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, SafeAreaView, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { API_URL } from '../../utils/constants';
+import { API_URL, MOCK_TOKEN } from '../../utils/constants';
+import { apiRequest } from '../../utils/api';
 import { socket } from '../../utils/socket';
 
 export default function ChatScreen() {
@@ -34,28 +35,11 @@ export default function ChatScreen() {
 
   const fetchInitData = async () => {
     try {
-      // Fetch current user (mocked auth)
-      const userRes = await fetch(`${API_URL}/users/me`, {
-        headers: { 'Authorization': 'Bearer YOUR_MOCK_TOKEN' }
-      });
-      let me = null;
-      if (userRes.ok) {
-        me = await userRes.json();
-      } else {
-        const fallback = await fetch(`${API_URL}/users`);
-        const usersData = await fallback.json();
-        me = usersData[0];
-      }
+      const me = await apiRequest('/users/me');
       setCurrentUser(me);
 
-      // Fetch historical messages
-      const msgRes = await fetch(`${API_URL}/projects/${id}/messages`, {
-        headers: { 'Authorization': 'Bearer YOUR_MOCK_TOKEN' }
-      });
-      if (msgRes.ok) {
-        const msgs = await msgRes.json();
-        setMessages(msgs);
-      }
+      const msgs = await apiRequest(`/projects/${id}/messages`);
+      setMessages(msgs);
 
     } catch (e) {
       console.error(e);

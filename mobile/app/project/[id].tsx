@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { API_URL } from '../../utils/constants';
+import { API_URL, MOCK_TOKEN } from '../../utils/constants';
+import { apiRequest } from '../../utils/api';
 import { socket } from '../../utils/socket';
 import JoinProjectModal from '../components/JoinProjectModal';
 import PostLogModal from '../components/PostLogModal';
@@ -12,13 +13,13 @@ export default function ProjectDetailsScreen() {
   
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [me, setMe] = useState<any>(null);
   
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [postModalVisible, setPostModalVisible] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(false);
 
   useEffect(() => {
-    fetchProject();
+    fetchInitialData();
 
     // Join room for real-time updates
     socket.emit('join_project_room', id);
@@ -36,6 +37,8 @@ export default function ProjectDetailsScreen() {
     socket.on('member_joined', (member: any) => {
       setProject((prev: any) => {
         if (!prev) return prev;
+        const alreadyMember = prev.members?.some((m: any) => m.userId === member.userId);
+        if (alreadyMember) return prev;
         return {
           ...prev,
           members: [...(prev.members || []), member]
@@ -49,14 +52,14 @@ export default function ProjectDetailsScreen() {
     };
   }, [id]);
 
-  const fetchProject = async () => {
+  const fetchInitialData = async () => {
     try {
-      const res = await fetch(`${API_URL}/projects/${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setProject(data);
-        setIsFollowing(data.followers?.length > 0 ? false : false); 
-      }
+      const [projectData, userData] = await Promise.all([
+        apiRequest(`/projects/${id}`),
+        apiRequest('/users/me')
+      ]);
+      setProject(projectData);
+      setMe(userData);
     } catch (e) {
       console.error(e);
     } finally {
@@ -64,48 +67,27 @@ export default function ProjectDetailsScreen() {
     }
   };
 
-  const handleJoinProject = async (role: string, commitmentLevel: string) => {
+  const handleJoinProject = async (message: string, contribution: string) => {
     try {
-      const res = await fetch(`${API_URL}/projects/${id}/join`, {
+      const data = await apiRequest(`/projects/${id}/join`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' },
-        body: JSON.stringify({ role, commitmentLevel })
+        body: JSON.stringify({ message, contribution })
       });
-      if (res.ok) {
-        Alert.alert('Success', `You successfully joined ${project?.title}!`);
-      } else {
-        const data = await res.json();
-        Alert.alert('Notice', data.error || 'Could not join project.');
+      if (data) {
+        Alert.alert('Request Sent', 'Your request to join has been sent to the project owner.');
       }
     } catch (e) {
       console.error(e);
-      Alert.alert('Error', 'An error occurred while joining.');
+      Alert.alert('Error', 'Failed to send join request. You might have already requested.');
     }
   };
 
   const handlePostLog = async (content: string, mentions: string[], mediaUrl?: string) => {
     try {
-      await fetch(`${API_URL}/logs/${id}`, {
+      await apiRequest(`/logs/${id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' },
         body: JSON.stringify({ content, mediaUrl })
       });
-    } catch (e) {
-      console.error(e);
-      Alert.alert('Error', 'Failed to post progress log.');
-    }
-  };
-
-  const handleFollow = async () => {
-    try {
-      const res = await fetch(`${API_URL}/projects/${id}/follow`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer mock-token' }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setIsFollowing(data.following);
-      }
     } catch (e) {
       console.error(e);
     }
@@ -119,6 +101,9 @@ export default function ProjectDetailsScreen() {
     );
   }
 
+  const isOwner = me?.id === project.createdBy;
+  const isMember = project.members?.some((m: any) => m.userId === me?.id);
+
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="flex-row items-center px-4 py-3 border-b border-gray-800">
@@ -130,24 +115,34 @@ export default function ProjectDetailsScreen() {
 
       <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
         <View className="bg-secondary p-5 rounded-3xl shadow-md border border-gray-800 mb-6">
-          <Text className="text-2xl font-bold text-white mb-2">{project.title}</Text>
-          <Text className="text-sm text-gray-400 mb-4">Led by {project.owner?.name}</Text>
+          <View className="flex-row justify-between items-start mb-2">
+             <Text className="text-2xl font-bold text-white flex-1">{project.title}</Text>
+             <View className="bg-accent/20 px-3 py-1 rounded-full border border-accent/50">
+                <Text className="text-accent text-xs font-bold">Score: {project.validationScore || 0}</Text>
+             </View>
+          </View>
+          
+          <Text className="text-sm text-gray-400 mb-4 font-semibold">{project.owner?.name}, {project.owner?.university}</Text>
           <Text className="text-base text-gray-300 font-sans leading-6">{project.description}</Text>
           
           <View className="flex-row items-center mt-6 space-x-3">
-            <TouchableOpacity 
-              className="flex-1 bg-accent py-3 rounded-full items-center shadow-sm"
-              onPress={() => setJoinModalVisible(true)}
-            >
-              <Text className="text-white font-semibold">Join Project</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              className={`flex-1 ${isFollowing ? 'bg-gray-600' : 'bg-gray-800'} py-3 rounded-full items-center border border-gray-700`}
-              onPress={handleFollow}
-            >
-              <Text className="text-white font-semibold">{isFollowing ? 'Following' : 'Follow'}</Text>
-            </TouchableOpacity>
+            {!isMember && (
+              <TouchableOpacity 
+                className="flex-1 bg-accent py-3 rounded-full items-center shadow-sm"
+                onPress={() => setJoinModalVisible(true)}
+              >
+                <Text className="text-white font-semibold">Join Project</Text>
+              </TouchableOpacity>
+            )}
+ 
+            {isOwner && (
+              <TouchableOpacity 
+                className="flex-1 bg-gray-800 py-3 rounded-full items-center border border-gray-700 flex-row justify-center"
+                onPress={() => router.push({ pathname: '/project/requests', params: { id: id } } as any)}
+              >
+                <Text className="text-white font-semibold">Join Requests</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity 
               className="bg-gray-800 py-3 px-5 rounded-full items-center border border-gray-700 flex-row"

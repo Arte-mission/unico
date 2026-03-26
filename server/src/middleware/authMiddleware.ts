@@ -15,7 +15,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
 
   const token = authHeader.split(' ')[1];
   
-  if (token === 'YOUR_MOCK_TOKEN') {
+  if (token === 'mock-auth-token-123' || token === 'YOUR_MOCK_TOKEN') {
      const firstUser = await prisma.user.findFirst();
      if (firstUser) {
         req.user = { id: firstUser.id, email: firstUser.email };
