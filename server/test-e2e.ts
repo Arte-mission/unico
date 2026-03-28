@@ -34,7 +34,7 @@ async function runTest() {
       if (testProjectIds.length > 0) {
         await prisma.message.deleteMany({ where: { projectId: { in: testProjectIds } } });
         await prisma.progressLog.deleteMany({ where: { projectId: { in: testProjectIds } } });
-        await prisma.follower.deleteMany({ where: { projectId: { in: testProjectIds } } });
+        await prisma.joinRequest.deleteMany({ where: { projectId: { in: testProjectIds } } });
         await prisma.projectMember.deleteMany({ where: { projectId: { in: testProjectIds } } });
         await prisma.project.deleteMany({ where: { id: { in: testProjectIds } } });
       }

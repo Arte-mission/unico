@@ -15,27 +15,17 @@ dotenv.config();
 
 const app = express();
 
-// Database Connection with Retry
-async function connectWithRetry(retries = 5, delay = 5000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await prisma.$connect();
-      console.log('✅ Connected to Supabase PostgreSQL database.');
-      return;
-    } catch (err) {
-      console.error(`❌ DB Connection failed (Attempt ${i + 1}/${retries}). Retrying in ${delay}ms...`);
-      if (i === retries - 1) {
-        console.error('🛑 Max retries reached. Database is unreachable.');
-        process.exit(1);
-      }
-      await new Promise(res => setTimeout(res, delay));
-    }
+// Database Connection check
+const checkDbConnection = async () => {
+  try {
+    await prisma.$connect();
+    console.log('✅ [DATABASE] Connected to Supabase PostgreSQL database.');
+  } catch (err: any) {
+    console.error('🛑 [DATABASE ERROR] Connection failed:', err.message);
+    // Don't exit immediately on retryable connection issues
   }
-}
-
-connectWithRetry();
-
-export { prisma }; // Re-export for any modules still importing from app
+};
+checkDbConnection();
 
 app.use(cors({
   origin: '*',
@@ -53,20 +43,22 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/search', searchRoutes);
 
-// Enhanced Health Check
+// Task 5: Enhanced Health Check
 app.get('/health', async (req, res) => {
   try {
-    // Basic DB check
+    const start = Date.now();
     await prisma.$queryRaw`SELECT 1`;
+    const latency = Date.now() - start;
+    
     res.json({ 
-      success: true, 
       status: 'ok', 
       database: 'connected', 
+      latency: `${latency}ms`,
       timestamp: new Date().toISOString() 
     });
   } catch (err) {
+    console.error('🚨 Health Check Failed:', err);
     res.status(503).json({ 
-      success: false, 
       status: 'error', 
       database: 'disconnected', 
       timestamp: new Date().toISOString() 
@@ -74,11 +66,12 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Task 1: 404 Handler
 app.use((req, res) => {
   res.status(404).json({ success: false, error: 'Endpoint not found or invalid API call' });
 });
 
-// Global Error Handler
+// Task 1: Global Error Handler
 app.use(errorHandler);
 
 export default app;

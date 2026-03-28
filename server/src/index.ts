@@ -1,6 +1,7 @@
 import http from 'http';
 import { Server } from 'socket.io';
-import app, { prisma } from './app';
+import app from './app';
+import { prisma } from './lib/prisma';
 import { setIO } from './socket';
 
 const server = http.createServer(app);
@@ -9,9 +10,9 @@ const io = new Server(server, {
 });
 setIO(io);
 
-// Socket.io basics
+// Task 8: Socket Stability & Logging
 io.on('connection', (socket) => {
-  console.log(`🔌 [SOCKET CONNECTED] ${socket.id}`);
+  console.log(`🔌 [SOCKET] New connection: ${socket.id}`);
 
   // Join a general project room
   socket.on('join_project_room', (projectId) => {
@@ -29,7 +30,7 @@ io.on('connection', (socket) => {
     try {
       if (!userId) return;
       socket.join(`user_${userId}`);
-      console.log(`👤 [SOCKET] ${socket.id} joined private room: user_${userId}`);
+      console.log(`👤 [SOCKET] ${socket.id} joined user room: user_${userId}`);
     } catch (err) {
       console.error(`🔥 [SOCKET ERROR] join_user_room:`, err);
     }
@@ -42,7 +43,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      console.log(`💬 [SOCKET] New message for project ${projectId} from user ${senderId}`);
+      console.log(`💬 [SOCKET] Message: Project ${projectId} | User ${senderId}`);
       
       const msg = await prisma.message.create({
         data: { projectId, senderId, content },
@@ -50,17 +51,33 @@ io.on('connection', (socket) => {
       });
       
       io.to(`project_${projectId}`).emit('receive_message', msg);
-    } catch (err) {
-      console.error(`🔥 [SOCKET ERROR] send_message:`, err);
+    } catch (err: any) {
+      console.error(`🔥 [SOCKET ERROR] send_message:`, err.message);
+      socket.emit('error', { message: 'Failed to send message' });
     }
   });
 
-  socket.on('disconnect', () => {
-    console.log(`🔌 [SOCKET DISCONNECTED] ${socket.id}`);
+  socket.on('error', (err) => {
+    console.error(`🔌 [SOCKET DEVICE ERROR] ${socket.id}:`, err);
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.log(`🔌 [SOCKET DISCONNECTED] ${socket.id} | Reason: ${reason}`);
   });
 });
 
 const PORT = Number(process.env.PORT) || 3001;
+
+// Task 4: Startup Logging
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 [SERVER] Running on http://localhost:${PORT}`);
+  console.log('--------------------------------------------------');
+  console.log(`🚀 [UNICO SERVER] Initialized successfully.`);
+  console.log(`📡 Listening on: http://0.0.0.0:${PORT}`);
+  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+  console.log('--------------------------------------------------');
+});
+
+// Global rejection handler
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 [FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
 });

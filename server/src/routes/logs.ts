@@ -1,21 +1,22 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '../app';
+import { prisma } from '../lib/prisma';
 import { getIO } from '../socket';
 import { authenticate, AuthRequest } from '../middleware/authMiddleware';
 import { asyncHandler } from '../middleware/errorMiddleware';
 
 const router = Router();
 
-// Post Progress Log
+// POST /api/logs/:projectId - Post Progress Log
 router.post('/:projectId', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const { content, mediaUrl } = req.body;
   const projectId = String(req.params.projectId);
+  const userId = req.user?.id;
 
   if (!content || !content.trim()) {
     return res.status(400).json({ success: false, error: 'Progress log content cannot be empty' });
   }
 
-  if (!req.user?.id) {
+  if (!userId) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
@@ -26,17 +27,12 @@ router.post('/:projectId', authenticate, asyncHandler(async (req: AuthRequest, r
   }
 
   // Check if user is a member OR the owner
-  const membershipFound = await prisma.projectMember.findUnique({
-    where: {
-      userId_projectId: {
-        userId: req.user.id,
-        projectId
-      }
-    }
+  const membershipFound = await prisma.projectMember.findFirst({
+    where: { userId, projectId }
   });
 
-  if (!membershipFound && project.createdBy !== req.user.id) {
-    return res.status(403).json({ success: false, error: 'Only members can post progress logs' });
+  if (!membershipFound && project.createdBy !== userId) {
+    return res.status(403).json({ success: false, error: 'Access denied: Must be a project member' });
   }
 
   const log = await prisma.progressLog.create({
@@ -44,7 +40,7 @@ router.post('/:projectId', authenticate, asyncHandler(async (req: AuthRequest, r
       content,
       mediaUrl,
       projectId,
-      userId: req.user.id
+      userId
     },
     include: {
       user: { select: { id: true, name: true } },
@@ -54,7 +50,7 @@ router.post('/:projectId', authenticate, asyncHandler(async (req: AuthRequest, r
 
   // Emit event to project room
   getIO()?.to(`project_${projectId}`).emit('new_progress_log', log);
-  // Emit globally for feed
+  // Emit globally for feed updates
   getIO()?.emit('feed_update', log);
 
   // Update project lastUpdated
@@ -63,10 +59,12 @@ router.post('/:projectId', authenticate, asyncHandler(async (req: AuthRequest, r
     data: { lastUpdated: new Date() }
   });
 
+  console.log(`📈 [LOG] New progress logged for project ${projectId} by user ${userId}`);
+
   res.status(201).json({ success: true, data: log });
 }));
 
-// Get Progress Logs for a project
+// GET /api/logs/:projectId - Get Progress Logs for a project
 router.get('/:projectId', asyncHandler(async (req: Request, res: Response) => {
   const projectId = String(req.params.projectId);
   const logs = await prisma.progressLog.findMany({

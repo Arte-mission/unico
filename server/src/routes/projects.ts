@@ -6,62 +6,58 @@ import { asyncHandler } from '../middleware/errorMiddleware';
 
 const router = Router();
 
-// Helper to calculate validation score for a project
-const calculateScore = (project: any) => {
-  const updatesWeight = 10;
-  const frequencyWeight = 5;
-  const commentsWeight = 2;
-  const teamWeight = 8;
-
-  const numUpdates = project._count?.progressLogs || project.progressLogs?.length || 0;
-
-  // Frequency: updates in last 7 days
-  const lastWeek = new Date();
-  lastWeek.setDate(lastWeek.getDate() - 7);
-  const recentUpdates = project.progressLogs?.filter((l: any) => new Date(l.createdAt) > lastWeek).length || 0;
-
-  const numComments = project.messages?.length || 0;
-  const teamSize = project.members?.length || 0;
-
-  return (numUpdates * updatesWeight) + (recentUpdates * frequencyWeight) + (numComments * commentsWeight) + (teamSize * teamWeight);
+// Standard Project Include Object to reduce duplication and ensure stability
+const DEFAULT_PROJECT_INCLUDE = {
+  owner: { select: { id: true, name: true, university: true, bio: true, skills: true } },
+  members: { 
+    include: { 
+      user: { select: { id: true, name: true, skills: true } } 
+    } 
+  },
+  _count: { select: { progressLogs: true, messages: true } }
 };
 
-// Get Feed (All projects)
+// Helper: Standardize skills processing to avoid client-side JSON.parse failures
+const processProjectData = (p: any) => {
+  if (!p) return null;
+  
+  const ownerSkills = typeof p.owner?.skills === 'string' ? JSON.parse(p.owner.skills) : (p.owner?.skills || []);
+  const processedMembers = (p.members || []).map((m: any) => ({
+    ...m,
+    user: m.user ? {
+      ...m.user,
+      skills: typeof m.user.skills === 'string' ? JSON.parse(m.user.skills) : (m.user.skills || [])
+    } : null
+  }));
+
+  // Validation Score Logic (Simplified & Task 6: cleaned)
+  const numUpdates = p._count?.progressLogs || 0;
+  const numMessages = p._count?.messages || 0;
+  const teamSize = p.members?.length || 0;
+  const score = (numUpdates * 10) + (numMessages * 2) + (teamSize * 5);
+
+  return {
+    ...p,
+    owner: p.owner ? { ...p.owner, skills: ownerSkills } : null,
+    members: processedMembers,
+    validationScore: score
+  };
+};
+
+// GET /api/projects - Feed
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
-  const projects = await (prisma.project as any).findMany({
+  const projects = await prisma.project.findMany({
     include: {
-      owner: { select: { id: true, name: true, university: true, bio: true, skills: true } },
-      members: { include: { user: { select: { id: true, name: true, skills: true } } } },
-      progressLogs: { orderBy: { createdAt: 'desc' }, take: 10 },
-      messages: { select: { id: true } },
-      _count: { select: { progressLogs: true } }
+      ...DEFAULT_PROJECT_INCLUDE,
+      progressLogs: { orderBy: { createdAt: 'desc' }, take: 1 } // Only need latest for feed
     }
   });
 
-  // Calculate scores and sort
-  const scoredProjects = projects.map((p: any) => {
-    // Standardize skills parsing for owner and members
-    const ownerSkills = typeof p.owner?.skills === 'string' ? JSON.parse(p.owner.skills) : (p.owner?.skills || []);
-    const processedMembers = (p.members || []).map((m: any) => ({
-      ...m,
-      user: {
-        ...m.user,
-        skills: typeof m.user?.skills === 'string' ? JSON.parse(m.user.skills) : (m.user?.skills || [])
-      }
-    }));
-
-    return {
-      ...p,
-      owner: { ...p.owner, skills: ownerSkills },
-      members: processedMembers,
-      validationScore: calculateScore(p)
-    };
-  }).sort((a: any, b: any) => b.validationScore - a.validationScore);
-
-  res.json({ success: true, data: scoredProjects });
+  const processed = projects.map(processProjectData).filter(Boolean);
+  res.json({ success: true, data: processed });
 }));
 
-// Create Project
+// POST /api/projects - Create
 router.post('/', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const { title, description } = req.body;
 
@@ -73,39 +69,41 @@ router.post('/', authenticate, asyncHandler(async (req: AuthRequest, res: Respon
     return res.status(400).json({ success: false, error: 'Project title is required' });
   }
 
-  const project = await prisma.project.create({
-    data: {
-      title,
-      description: description || '',
-      createdBy: req.user.id
-    }
-  });
+  const project = await prisma.$transaction(async (tx) => {
+    const p = await tx.project.create({
+      data: {
+        title,
+        description: description || '',
+        createdBy: req.user!.id
+      }
+    });
 
-  // Auto join as founder
-  await prisma.projectMember.create({
-    data: {
-      userId: req.user.id,
-      projectId: project.id,
-      role: 'Founder',
-      commitmentLevel: 'Full-time'
-    }
+    // Auto join as founder
+    await tx.projectMember.create({
+      data: {
+        userId: req.user!.id,
+        projectId: p.id,
+        role: 'Founder',
+        commitmentLevel: 'Full-time'
+      }
+    });
+
+    return p;
   });
 
   res.status(201).json({ success: true, data: project });
 }));
 
-// Get Project By ID
+// GET /api/projects/:id - Details
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const project = await prisma.project.findUnique({
     where: { id: String(req.params.id) },
     include: {
-      owner: { select: { id: true, name: true, university: true, skills: true } },
-      members: { include: { user: { select: { id: true, name: true, skills: true } } } },
+      ...DEFAULT_PROJECT_INCLUDE,
       progressLogs: {
         include: { user: { select: { name: true } } },
         orderBy: { createdAt: 'desc' }
-      },
-      messages: { select: { id: true } }
+      }
     }
   });
 
@@ -113,44 +111,42 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
     return res.status(404).json({ success: false, error: 'Project not found' });
   }
 
-  const score = calculateScore(project);
-  res.json({ success: true, data: { ...project, validationScore: score } });
+  res.json({ success: true, data: processProjectData(project) });
 }));
 
-// Join Project (Create Request)
+// POST /api/projects/:id/join - Join Request
 router.post('/:id/join', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const { message, contribution } = req.body;
   const projectId = String(req.params.id);
+  const userId = req.user?.id;
 
-  if (!req.user?.id) {
+  if (!userId) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
-  // Check if project exists
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) {
     return res.status(404).json({ success: false, error: 'Project not found' });
   }
 
-  // Check if already member
-  const existingMember = await (prisma as any).projectMember.findUnique({
-    where: { userId_projectId: { userId: req.user.id, projectId } }
+  // Check existing membership or request
+  const existingMember = await prisma.projectMember.findFirst({
+    where: { userId, projectId }
   });
   if (existingMember) {
     return res.status(400).json({ success: false, error: 'Already a member' });
   }
 
-  // Check if already requested
-  const existingRequest = await (prisma as any).joinRequest.findUnique({
-    where: { userId_projectId: { userId: req.user.id, projectId } }
+  const existingRequest = await prisma.joinRequest.findFirst({
+    where: { userId, projectId, status: 'PENDING' }
   });
   if (existingRequest) {
-    return res.status(400).json({ success: false, error: 'Request already pending' });
+    return res.status(400).json({ success: false, error: 'Join request already pending' });
   }
 
-  const joinReq = await (prisma as any).joinRequest.create({
+  const joinReq = await prisma.joinRequest.create({
     data: {
-      userId: req.user.id,
+      userId,
       projectId,
       message: message || "I'd like to join!",
       contribution: contribution || "General support"
@@ -164,23 +160,17 @@ router.post('/:id/join', authenticate, asyncHandler(async (req: AuthRequest, res
   res.status(201).json({ success: true, data: joinReq });
 }));
 
-// Get Join Requests (for project owner)
+// GET /api/projects/:id/requests - Get PENDING join requests (Owner only)
 router.get('/:id/requests', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const projectId = String(req.params.id);
-  const project = await prisma.project.findUnique({
-    where: { id: projectId }
-  });
+  const userId = req.user?.id;
 
-  if (!project) {
-    return res.status(404).json({ success: false, error: 'Project not found' });
-  }
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!project) return res.status(404).json({ success: false, error: 'Project not found' });
+  if (project.createdBy !== userId) return res.status(403).json({ success: false, error: 'Unauthorized: Not the owner' });
 
-  if (project.createdBy !== req.user?.id) {
-    return res.status(403).json({ success: false, error: 'Unauthorized: You are not the owner' });
-  }
-
-  const requests = await (prisma as any).joinRequest.findMany({
-    where: { projectId: project.id, status: 'PENDING' },
+  const requests = await prisma.joinRequest.findMany({
+    where: { projectId, status: 'PENDING' },
     include: {
       user: { select: { id: true, name: true, university: true, skills: true, bio: true } }
     }
@@ -189,30 +179,24 @@ router.get('/:id/requests', authenticate, asyncHandler(async (req: AuthRequest, 
   res.json({ success: true, data: requests });
 }));
 
-// Respond to Join Request
+// POST /api/projects/:id/requests/:requestId/respond - Accept/Reject Request
 router.post('/:id/requests/:requestId/respond', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const { status, role } = req.body; // status: 'ACCEPTED' or 'REJECTED'
   const projectId = String(req.params.id);
   const requestId = String(req.params.requestId);
+  const userId = req.user?.id;
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project) {
-    return res.status(404).json({ success: false, error: 'Project not found' });
-  }
+  if (!project) return res.status(404).json({ success: false, error: 'Project not found' });
+  if (project.createdBy !== userId) return res.status(403).json({ success: false, error: 'Unauthorized: Not the owner' });
 
-  if (project.createdBy !== req.user?.id) {
-    return res.status(403).json({ success: false, error: 'Unauthorized: You are not the owner' });
-  }
-
-  const joinReq = await (prisma as any).joinRequest.findUnique({ where: { id: requestId } });
-  if (!joinReq) {
-    return res.status(404).json({ success: false, error: 'Request not found' });
-  }
+  const joinReq = await prisma.joinRequest.findUnique({ where: { id: requestId } });
+  if (!joinReq || joinReq.projectId !== projectId) return res.status(404).json({ success: false, error: 'Request not found' });
 
   if (status === 'ACCEPTED') {
     await prisma.$transaction([
-      (prisma as any).joinRequest.update({ where: { id: requestId }, data: { status: 'ACCEPTED' } }),
-      (prisma as any).projectMember.create({
+      prisma.joinRequest.update({ where: { id: requestId }, data: { status: 'ACCEPTED' } }),
+      prisma.projectMember.create({
         data: {
           userId: joinReq.userId,
           projectId: joinReq.projectId,
@@ -221,20 +205,21 @@ router.post('/:id/requests/:requestId/respond', authenticate, asyncHandler(async
       })
     ]);
 
-    const member = await (prisma as any).projectMember.findUnique({
+    const member = await prisma.projectMember.findUnique({
       where: { userId_projectId: { userId: joinReq.userId, projectId: joinReq.projectId } },
       include: { user: { select: { id: true, name: true } } }
     });
 
     getIO()?.to(`project_${projectId}`).emit('member_joined', member);
+    console.log(`✅ [JOIN] User ${joinReq.userId} joined project ${projectId}`);
   } else {
-    await (prisma as any).joinRequest.update({ where: { id: requestId }, data: { status: 'REJECTED' } });
+    await prisma.joinRequest.update({ where: { id: requestId }, data: { status: 'REJECTED' } });
   }
 
   res.json({ success: true, data: { status } });
 }));
 
-// Get messages for a project
+// GET /api/projects/:id/messages
 router.get('/:id/messages', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const messages = await prisma.message.findMany({
     where: { projectId: String(req.params.id) },

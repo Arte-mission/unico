@@ -1,30 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
 
-// Log all requests
+// Enhanced Request Logger
 export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
-  console.log(`📡 [${new Date().toISOString()}] ${req.method} ${req.url}`);
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`📡 [${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`);
+  });
   next();
 };
 
-// Global error handler
+// Global Error Handler
 export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error(`🛑 [SYSTEM ERROR] ${req.method} ${req.url}:`, err);
+  // Log full error for internal debugging
+  console.error(`🛑 [SYSTEM ERROR] ${req.method} ${req.url}:`, {
+    message: err.message,
+    stack: err.stack,
+    details: err.details || null
+  });
   
   const status = err.status || 500;
-  const message = err.message || 'Internal server error';
+  const message = err.message || 'An unexpected error occurred on the server';
 
+  // Ensure consistent response format
   res.status(status).json({
     success: false,
-    error: message,
-    timestamp: new Date().toISOString()
+    error: message
   });
 };
 
-// Async route wrapper
+// Robust Async Wrapper
 export const asyncHandler = (fn: any) => (req: Request, res: Response, next: NextFunction) => {
   Promise.resolve(fn(req, res, next)).catch((err) => {
-    // Ensure error logging is consistent
-    console.error(`🔥 [ASYNC ERROR] ${req.method} ${req.url}`, err);
+    console.error(`🔥 [ASYNC ERROR HANDLED] ${req.method} ${req.url}:`, err.message);
     next(err);
   });
 };

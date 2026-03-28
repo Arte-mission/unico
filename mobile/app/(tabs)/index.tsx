@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, RefreshControl, StatusBar, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { socket } from '../../utils/socket';
 import { apiRequest } from '../../utils/api';
-import PostLogModal from '../components/PostLogModal';
 import CreateProjectModal from '../components/CreateProjectModal';
 
 const timeAgo = (dateStr: string) => {
@@ -17,59 +16,70 @@ const timeAgo = (dateStr: string) => {
 };
 
 const ProjectItem = memo(({ item, router }: { item: any, router: any }) => {
-  const isActive = Date.now() - new Date(item.lastUpdated).getTime() < 86400000;
-  const isNew = Date.now() - new Date(item.createdAt).getTime() < 86400000 * 2;
+  const isUpdating = Date.now() - new Date(item.lastUpdated).getTime() < 172800000; // 2 days
 
   return (
     <TouchableOpacity 
-      activeOpacity={0.9}
-      className="bg-secondary p-5 mb-4 rounded-3xl shadow-md border border-gray-800 relative"
+      activeOpacity={0.8}
+      className="bg-surface p-6 mb-4 rounded-4xl border border-border/60"
       onPress={() => router.push({ pathname: '/project/[id]', params: { id: item.id } } as any)}
     >
-      <View className="flex-row justify-between items-center mb-3">
+      <View className="flex-row justify-between items-center mb-4">
         <View className="flex-row space-x-2">
-          {isActive && <View className="bg-red-500/20 px-2 py-0.5 rounded-md border border-red-500/50"><Text className="text-red-400 text-[10px] font-bold uppercase tracking-wider">🔥 Active</Text></View>}
-          <View className="bg-accent/20 px-2 py-0.5 rounded-md border border-accent/50">
-            <Text className="text-accent text-[10px] font-bold uppercase tracking-wider">Score: {item.validationScore || 0}</Text>
+          {item.validationScore > 50 && (
+            <View className="bg-success/10 px-3 py-1 rounded-full border border-success/30">
+              <Text className="text-success text-[10px] font-bold uppercase tracking-widest">High Impact</Text>
+            </View>
+          )}
+          <View className="bg-accent/10 px-3 py-1 rounded-full border border-accent/20">
+            <Text className="text-accentLight text-[10px] font-bold uppercase tracking-widest">
+              Score: {item.validationScore || 0}
+            </Text>
           </View>
         </View>
-        <Text className="text-[10px] text-gray-500 font-bold uppercase">{timeAgo(item.lastUpdated)}</Text>
+        <Text className="text-[10px] text-textTertiary font-bold uppercase tracking-tighter">
+          {isUpdating ? 'Recent Activity' : timeAgo(item.lastUpdated)}
+        </Text>
       </View>
 
-      <Text className="text-xl font-bold text-white mb-1">{item.title}</Text>
-      <Text className="text-gray-400 text-xs mb-3 font-semibold">{item.owner?.name} • {item.owner?.university}</Text>
-      <Text className="text-gray-300 mb-4 font-sans leading-5" numberOfLines={3}>{item.description}</Text>
+      <Text className="text-2xl font-bold text-textPrimary mb-1" style={{ letterSpacing: -0.5 }}>{item.title}</Text>
+      <Text className="text-textSecondary text-xs mb-4 font-semibold uppercase tracking-widest">
+        {item.owner?.name} • {item.owner?.university}
+      </Text>
       
-      {item.progressLogs?.length > 0 && (
-        <View className="bg-background/40 p-3 rounded-2xl mb-4 border border-gray-700/50">
-          <Text className="text-[10px] text-accent font-bold mb-1 uppercase tracking-widest">Latest Progress</Text>
-          <Text className="text-gray-300 text-xs leading-4" numberOfLines={2}>{item.progressLogs[0].content}</Text>
-        </View>
-      )}
-
+      <Text className="text-textSecondary/80 text-sm leading-6 mb-6" numberOfLines={3}>
+        {item.description}
+      </Text>
+      
       <View className="flex-row justify-between items-center">
         <View className="flex-row items-center">
           <View className="flex-row items-center mr-3">
             {item.members?.slice(0, 3).map((m: any, i: number) => (
-              <View key={i} style={{ zIndex: 10 - i }} className={`w-7 h-7 rounded-full bg-accent items-center justify-center border-2 border-secondary ${i > 0 ? '-ml-2.5' : ''}`}>
-                 <Text className="text-white text-[10px] font-bold">{m.user?.name?.charAt(0) || 'U'}</Text>
+              <View 
+                key={i} 
+                style={{ zIndex: 10 - i }} 
+                className={`w-8 h-8 rounded-full bg-accentDark items-center justify-center border-2 border-surface ${i > 0 ? '-ml-3' : ''}`}
+              >
+                  <Text className="text-white text-xs font-bold">{m.user?.name?.charAt(0) || 'U'}</Text>
               </View>
             ))}
             {item.members?.length > 3 && (
-              <View className="w-7 h-7 rounded-full bg-gray-700 items-center justify-center border-2 border-secondary -ml-2.5">
-                <Text className="text-gray-400 text-[8px] font-bold">+{item.members.length - 3}</Text>
+              <View className="w-8 h-8 rounded-full bg-surfaceLight items-center justify-center border-2 border-surface -ml-3">
+                <Text className="text-textSecondary text-[10px] font-bold">+{item.members.length - 3}</Text>
               </View>
             )}
           </View>
-          <Text className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{item.members?.length || 1} Build Partners</Text>
+          <Text className="text-[10px] text-textTertiary font-bold uppercase">
+            {item.members?.length || 1} Build Partner{item.members?.length !== 1 ? 's' : ''}
+          </Text>
         </View>
         
-        <TouchableOpacity 
-          className="bg-accent px-6 py-2 rounded-full"
-          onPress={() => router.push({ pathname: '/project/[id]', params: { id: item.id } } as any)}
-        >
-          <Text className="text-white text-xs font-bold">View</Text>
-        </TouchableOpacity>
+        <View className="flex-row items-center">
+            <Text className="text-accentLight font-bold text-xs mr-2">View</Text>
+            <View className="w-6 h-6 rounded-full bg-accent/20 items-center justify-center">
+                 <Text className="text-accent text-xs">🚀</Text>
+            </View>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -91,7 +101,7 @@ export default function FeedScreen() {
     } catch (e) {
       console.error('Failed to fetch projects', e);
     } finally {
-      setLoading(false);
+      if (!isRefresh) setLoading(false);
       setRefreshing(false);
     }
   };
@@ -140,21 +150,24 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <View className="px-6 pt-4 pb-2 border-b border-gray-800 flex-row justify-between items-center">
+      <StatusBar barStyle="light-content" />
+      <View className="px-6 pt-6 pb-4 flex-row justify-between items-end">
         <View>
-          <Text className="text-3xl font-bold text-white tracking-tight">Unico</Text>
-          <View className="flex-row items-center mt-1">
-            <View className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-            <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
-              {isConnected ? 'Real-time Feed' : 'Disconnected'}
-            </Text>
-          </View>
+          <Text className="text-textTertiary text-xs font-bold uppercase tracking-widest mb-1">Collaborative Launchpad</Text>
+          <Text className="text-4xl font-extrabold text-white tracking-tighter">Explore</Text>
+        </View>
+        <View className="flex-row items-center mb-1">
+          <View className={`w-3 h-3 rounded-full mr-2 ${isConnected ? 'bg-success' : 'bg-danger'} border-2 border-background`} />
+          <Text className="text-textTertiary text-[10px] font-bold uppercase tracking-widest">
+            {isConnected ? 'Real-time' : 'Disconnected'}
+          </Text>
         </View>
       </View>
 
       {loading && projects.length === 0 ? (
         <View className="flex-1 justify-center items-center">
           <ActivityIndicator size="large" color="#6366F1" />
+          <Text className="text-textSecondary mt-4 font-bold uppercase tracking-widest text-[10px]">Assembling Feed</Text>
         </View>
       ) : (
         <FlatList 
@@ -163,23 +176,29 @@ export default function FeedScreen() {
           onRefresh={onRefresh}
           refreshing={refreshing}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+          contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
           ListEmptyComponent={
-            <View className="items-center mt-20 px-10">
-              <Text className="text-gray-500 text-center text-lg italic">No projects found. Launch one!</Text>
+            <View className="items-center mt-32 px-10">
+              <View className="w-20 h-20 bg-surface rounded-full items-center justify-center mb-6">
+                 <Text className="text-4xl">🌑</Text>
+              </View>
+              <Text className="text-textSecondary text-center text-lg font-semibold mb-2">The feed is silent</Text>
+              <Text className="text-textTertiary text-center text-sm">Be the first to ignite a project today.</Text>
             </View>
           }
           renderItem={renderItem}
-          removeClippedSubviews={true}
-          initialNumToRender={5}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={7}
         />
       )}
 
       <TouchableOpacity 
-        className="absolute bottom-10 right-6 bg-accent px-6 py-4 rounded-3xl flex-row items-center shadow-2xl border border-white/10"
+        activeOpacity={0.9}
+        className="absolute bottom-10 left-1/4 right-1/4 h-16 bg-accent rounded-full flex-row items-center justify-center shadow-2xl shadow-accent/50 border border-white/20"
         onPress={() => setCreateModalVisible(true)}
       >
-        <Text className="text-white font-bold text-lg">Launch Project</Text>
+        <Text className="text-white font-extrabold text-lg mr-2">New Project</Text>
+        <Text className="text-lg">✨</Text>
       </TouchableOpacity>
 
       <CreateProjectModal visible={createModalVisible} onClose={() => setCreateModalVisible(false)} onSubmit={handleCreateProject} />

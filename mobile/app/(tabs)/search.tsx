@@ -1,139 +1,126 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, SafeAreaView, FlatList, ActivityIndicator, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TextInput, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, StatusBar, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { apiRequest } from '../../utils/api';
-import { socket } from '../../utils/socket';
 
 export default function SearchScreen() {
   const router = useRouter();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'projects' | 'users'>('all');
   const [results, setResults] = useState<{ projects: any[], users: any[] }>({ projects: [], users: [] });
   const [loading, setLoading] = useState(false);
+  const [activeType, setActiveType] = useState<'all' | 'projects' | 'users'>('all');
 
-  useEffect(() => {
-    // Debounce search slightly
-    const timer = setTimeout(() => {
-      fetchSearchResults();
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [query, filter]);
-
-  const fetchSearchResults = async () => {
-    if (!query.trim()) {
-       setResults({ projects: [], users: [] });
-       return;
+  const handleSearch = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setResults({ projects: [], users: [] });
+      return;
     }
-
     setLoading(true);
     try {
-      const data = await apiRequest(`/search?q=${encodeURIComponent(query)}&type=${filter}`);
-      if (data) {
-        setResults(data);
-      }
-    } catch (error) {
-      console.error(error);
+      const data = await apiRequest(`/search?q=${encodeURIComponent(q)}&type=${activeType}`);
+      setResults(data);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeType]);
 
-  const renderProjectItem = ({ item }: { item: any }) => (
+  useEffect(() => {
+    const delay = setTimeout(() => handleSearch(query), 400);
+    return () => clearTimeout(delay);
+  }, [query, activeType]);
+
+  const renderProject = ({ item }: { item: any }) => (
     <TouchableOpacity 
-      className="bg-secondary p-4 mb-3 rounded-2xl border border-gray-800 flex-row justify-between items-center"
+      activeOpacity={0.8}
+      className="bg-surface p-5 mb-3 rounded-4xl border border-border"
       onPress={() => router.push({ pathname: '/project/[id]', params: { id: item.id } } as any)}
     >
-      <View className="flex-1 mr-3">
-        <Text className="text-lg font-bold text-textPrimary mb-1" numberOfLines={1}>{item.title}</Text>
-        <Text className="text-gray-400 text-sm" numberOfLines={2}>{item.description}</Text>
-        <View className="flex-row items-center mt-2">
-           <Text className="text-xs text-accent font-semibold bg-gray-800 px-2 py-1 rounded border border-gray-700">
-             {item.members?.length || 1} Members
-           </Text>
-        </View>
+      <View className="flex-row justify-between mb-1">
+        <Text className="text-lg font-bold text-textPrimary flex-1 mr-2" numberOfLines={1}>{item.title}</Text>
+        <Text className="text-accentLight font-bold text-[10px] uppercase tracking-widest">{item.validationScore || 0}</Text>
       </View>
-      <Text className="text-gray-500 font-bold">→</Text>
+      <Text className="text-textTertiary text-xs font-bold uppercase tracking-tighter mb-2">{item.owner?.name} • {item.owner?.university}</Text>
+      <Text className="text-textSecondary text-xs leading-5" numberOfLines={2}>{item.description}</Text>
     </TouchableOpacity>
   );
 
-  const renderUserItem = ({ item }: { item: any }) => (
+  const renderUser = ({ item }: { item: any }) => (
     <TouchableOpacity 
-      className="bg-secondary p-4 mb-3 rounded-2xl border border-gray-800 flex-row items-center"
-      onPress={() => router.push({ pathname: '/profile/[id]', params: { id: item.id } } as any)} 
+      activeOpacity={0.8}
+      className="bg-surface p-5 mb-3 rounded-4xl border border-border flex-row items-center"
+      onPress={() => router.push({ pathname: '/profile/[id]', params: { id: item.id } } as any)}
     >
-      <View className="w-12 h-12 rounded-full bg-accent/20 items-center justify-center mr-4 border border-accent/50">
-        <Text className="text-accent font-bold text-lg">{item.name?.charAt(0) || 'U'}</Text>
+      <View className="w-10 h-10 rounded-full bg-accent/20 items-center justify-center mr-4">
+        <Text className="text-accent text-lg font-bold">{item.name?.charAt(0) || 'U'}</Text>
       </View>
       <View className="flex-1">
-        <Text className="text-lg font-bold text-textPrimary">{item.name}</Text>
-        <Text className="text-gray-400 text-sm">{item.university}</Text>
+        <Text className="text-textPrimary font-bold text-base">{item.name}</Text>
+        <Text className="text-textTertiary text-xs uppercase tracking-widest font-bold">{item.university}</Text>
       </View>
-      <Text className="text-gray-500 font-bold">→</Text>
+      <Text className="text-textTertiary font-bold">→</Text>
     </TouchableOpacity>
   );
 
-  const combinedData = [
-    ...(filter === 'all' || filter === 'projects' ? results.projects.map(p => ({ ...p, _type: 'project' })) : []),
-    ...(filter === 'all' || filter === 'users' ? results.users.map(u => ({ ...u, _type: 'user' })) : [])
-  ];
+  const listData = activeType === 'projects' ? results.projects : activeType === 'users' ? results.users : [...results.projects.map(p => ({ ...p, _kind: 'project' })), ...results.users.map(u => ({ ...u, _kind: 'user' }))];
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <View className="px-6 pt-4 border-b border-gray-800 pb-4">
-        <Text className="text-2xl font-bold text-textPrimary mb-4">Discover</Text>
+      <StatusBar barStyle="light-content" />
+      
+      <View className="px-6 pt-6 pb-4">
+        <Text className="text-4xl font-extrabold text-white tracking-tighter mb-6">Explore</Text>
         
-        {/* Search Bar */}
-        <View className="bg-secondary flex-row items-center px-4 py-3 rounded-xl border border-gray-700">
-           <Text className="text-gray-400 mr-2 text-lg">🔍</Text>
-           <TextInput 
-             className="flex-1 text-textPrimary font-sans text-base"
-             placeholder="Search projects, skills, or builders..."
-             placeholderTextColor="#64748b"
-             value={query}
-             onChangeText={setQuery}
-           />
+        <View className="bg-surface p-4 rounded-3xl border border-border flex-row items-center mb-6">
+          <Text className="mr-3 opacity-50">🔍</Text>
+          <TextInput 
+            className="flex-1 text-textPrimary font-semibold"
+            placeholder="Projects, talent, or missions..."
+            placeholderTextColor="#64748B"
+            value={query}
+            onChangeText={setQuery}
+            autoCorrect={false}
+          />
         </View>
 
-        {/* Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-4">
-           {['all', 'projects', 'users'].map((f) => (
-             <TouchableOpacity 
-               key={f} 
-               className={`px-4 py-2 rounded-full mr-3 border ${filter === f ? 'bg-accent border-accent' : 'bg-transparent border-gray-600'}`}
-               onPress={() => setFilter(f as any)}
-             >
-               <Text className={`font-semibold capitalize ${filter === f ? 'text-white' : 'text-gray-400'}`}>{f}</Text>
-             </TouchableOpacity>
-           ))}
-        </ScrollView>
+        <View className="flex-row space-x-2 mb-2">
+            {['all', 'projects', 'users'].map((t) => (
+                <TouchableOpacity 
+                    key={t}
+                    onPress={() => setActiveType(t as any)}
+                    className={`px-6 py-2 rounded-full border ${activeType === t ? 'bg-accent border-accent' : 'bg-surface border-border'}`}
+                >
+                    <Text className={`text-[10px] font-bold uppercase tracking-widest ${activeType === t ? 'text-white' : 'text-textTertiary'}`}>{t}</Text>
+                </TouchableOpacity>
+            ))}
+        </View>
       </View>
 
-      {/* Results List */}
-      <View className="flex-1 px-4 pt-4">
-        {loading && <ActivityIndicator size="small" color="#6366F1" className="mb-4" />}
-        
+      {loading ? (
+        <View className="flex-1 justify-center items-center">
+            <ActivityIndicator color="#6366F1" />
+        </View>
+      ) : (
         <FlatList 
-          data={combinedData}
-          keyExtractor={(item) => `${item._type}_${item.id}`}
-          showsVerticalScrollIndicator={false}
-          initialNumToRender={8}
-          maxToRenderPerBatch={10}
-          windowSize={11}
-          removeClippedSubviews={true}
+          data={listData}
+          keyExtractor={(item, idx) => item.id || idx.toString()}
+          contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+          renderItem={({ item }: any) => item._kind === 'user' || activeType === 'users' ? renderUser({ item }) : renderProject({ item })}
           ListEmptyComponent={
-            !loading ? (
-              <View className="items-center justify-center mt-10">
-                <Text className="text-gray-500 text-center">No results found for "{query}"</Text>
+            query.trim() ? (
+              <View className="items-center mt-20">
+                <Text className="text-textTertiary italic font-semibold">No matches for your search.</Text>
               </View>
-            ) : null
+            ) : (
+              <View className="items-center mt-20 px-10">
+                <Text className="text-textTertiary text-center text-sm font-bold uppercase tracking-widest opacity-50">Discovery Mode Active</Text>
+                <Text className="text-textSecondary text-center text-xs mt-2 italic">Search for skills like "React", "Marketing", or university names.</Text>
+              </View>
+            )
           }
-          renderItem={({ item }) => {
-            if (item._type === 'project') return renderProjectItem({ item });
-            if (item._type === 'user') return renderUserItem({ item });
-            return null;
-          }}
         />
-      </View>
+      )}
     </SafeAreaView>
   );
 }
