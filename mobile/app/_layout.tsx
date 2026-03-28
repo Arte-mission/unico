@@ -50,12 +50,10 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={DarkTheme}>
-      <SafeAreaView className="flex-1 bg-background justify-center p-6" style={{ backgroundColor: '#0B0F1A' }}>
-        <Stack screenOptions={{ contentStyle: { backgroundColor: '#0B0F1A' } }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-        </Stack>
-      </SafeAreaView>
+      <Stack screenOptions={{ contentStyle: { backgroundColor: '#0B0F1A' } }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+      </Stack>
     </ThemeProvider>
   );
 }

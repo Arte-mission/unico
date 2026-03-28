@@ -6,3 +6,12 @@ body {
   background-color: #0B0F1A !important;
   color: white !important;
 }
+
+/* Fix for React Native Web flex layout collapsing on web with Nativewind */
+html, body, #root {
+  height: 100vh;
+  width: 100%;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
