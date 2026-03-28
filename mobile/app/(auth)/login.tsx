@@ -14,6 +14,29 @@ import {
 import { useRouter } from 'expo-router';
 import { apiRequest } from '../../utils/api';
 
+const AUSTRALIAN_UNIVERSITIES = [
+  { name: 'University of New South Wales (UNSW)', domains: ['unsw.edu.au', 'student.unsw.edu.au'] },
+  { name: 'Macquarie University', domains: ['mq.edu.au', 'students.mq.edu.au'] },
+  { name: 'University of Sydney', domains: ['sydney.edu.au', 'uni.sydney.edu.au'] },
+  { name: 'University of Melbourne', domains: ['unimelb.edu.au', 'student.unimelb.edu.au'] },
+  { name: 'Monash University', domains: ['monash.edu', 'student.monash.edu'] },
+  { name: 'University of Queensland', domains: ['uq.edu.au', 'student.uq.edu.au'] },
+  { name: 'Australian National University', domains: ['anu.edu.au', 'u.anu.edu.au'] },
+  { name: 'University of Western Australia', domains: ['uwa.edu.au', 'student.uwa.edu.au'] },
+  { name: 'University of Adelaide', domains: ['adelaide.edu.au', 'student.adelaide.edu.au'] },
+  { name: 'RMIT University', domains: ['rmit.edu.au', 'student.rmit.edu.au'] },
+  { name: 'Queensland University of Technology (QUT)', domains: ['qut.edu.au', 'student.qut.edu.au'] },
+  { name: 'University of Technology Sydney (UTS)', domains: ['uts.edu.au', 'student.uts.edu.au'] },
+  { name: 'Curtin University', domains: ['curtin.edu.au', 'student.curtin.edu.au'] },
+  { name: 'Deakin University', domains: ['deakin.edu.au', 'student.deakin.edu.au'] },
+  { name: 'Griffith University', domains: ['griffith.edu.au', 'student.griffith.edu.au'] },
+  { name: 'University of Newcastle', domains: ['newcastle.edu.au', 'uon.edu.au'] },
+  { name: 'University of Wollongong', domains: ['uow.edu.au', 'uowmail.edu.au'] },
+  { name: 'La Trobe University', domains: ['latrobe.edu.au', 'students.latrobe.edu.au'] },
+  { name: 'Swinburne University of Technology', domains: ['swinburne.edu.au', 'student.swinburne.edu.au'] },
+  { name: 'Bond University', domains: ['bond.edu.au', 'student.bond.edu.au'] }
+];
+
 export default function AuthScreen() {
   const router = useRouter();
   
@@ -23,11 +46,13 @@ export default function AuthScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  
   const [university, setUniversity] = useState('');
+  const [showSub, setShowSub] = useState(false);
 
-  const toggleMode = () => {
-    setIsLogin(!isLogin);
-  };
+  const filteredUnis = AUSTRALIAN_UNIVERSITIES.filter(u => 
+    u.name.toLowerCase().includes(university.toLowerCase())
+  );
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -35,9 +60,26 @@ export default function AuthScreen() {
       return;
     }
 
-    if (!isLogin && !name) {
-      Alert.alert('Required Fields', 'Please enter your full name for registration');
-      return;
+    if (!isLogin) {
+      if (!name) {
+        Alert.alert('Required Fields', 'Please enter your full name for registration');
+        return;
+      }
+      
+      const selectedUni = AUSTRALIAN_UNIVERSITIES.find(u => u.name === university);
+      if (!selectedUni) {
+        Alert.alert('Invalid Selection', 'Please select a valid Australian University from the dropdown list.');
+        return;
+      }
+      
+      const emailDomain = email.split('@')[1];
+      if (!emailDomain || !selectedUni.domains.includes(emailDomain.toLowerCase())) {
+         Alert.alert(
+           'Invalid Email Format', 
+           `Your email doesn't match the selected university.\n\nPlease use an official email ending in:\n${selectedUni.domains.map(d => '@'+d).join(' or ')}`
+         );
+         return;
+      }
     }
 
     setLoading(true);
@@ -56,17 +98,13 @@ export default function AuthScreen() {
         }
       } else {
         // Registration Logic
+        // Since we explicitly checked university validity above, it's safe to use `university` state directly.
         const data = await apiRequest('/auth/register', {
           method: 'POST',
-          body: JSON.stringify({ 
-            name, 
-            email, 
-            password, 
-            university: university.trim() ? university : 'Default University' 
-          })
+          body: JSON.stringify({ name, email, password, university })
         });
         if (data) {
-          Alert.alert('Success', 'Welcome to Unico! Please login to continue.', [
+          Alert.alert('Success', 'Welcome to Unico! Please login to your new builder account.', [
             { text: 'OK', onPress: () => setIsLogin(true) }
           ]);
         }
@@ -101,7 +139,7 @@ export default function AuthScreen() {
           </View>
 
           {/* Form Container */}
-          <View className="bg-[#111726]/80 p-6 rounded-3xl border border-white/5 shadow-2xl">
+          <View className="bg-[#111726]/80 p-6 rounded-3xl border border-white/5 shadow-2xl z-10">
             
             <View className="flex-row mb-8 rounded-xl bg-[#0F1420] p-1 border border-white/5">
               <TouchableOpacity 
@@ -133,15 +171,36 @@ export default function AuthScreen() {
                   autoCapitalize="words"
                 />
 
-                <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest pl-2 mb-2">University / Organization</Text>
+                <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest pl-2 mb-2">University (Australia)</Text>
                 <TextInput 
-                  className="bg-[#1A2235] text-white px-5 py-4 rounded-xl border border-white/5 mb-4 font-medium" 
-                  placeholder="e.g. UNSW or Stanford" 
+                  className={`bg-[#1A2235] text-white px-5 py-4 border border-white/5 font-medium ${showSub && filteredUnis.length > 0 ? 'rounded-t-xl' : 'rounded-xl mb-4'}`} 
+                  placeholder="Search Australian University..." 
                   value={university}
-                  onChangeText={setUniversity}
+                  onFocus={() => setShowSub(true)}
+                  onChangeText={(val) => { setUniversity(val); setShowSub(true); }}
                   placeholderTextColor="#4B5563"
                   autoCapitalize="words"
                 />
+                
+                {/* Search Dropdown Overlay Inline */}
+                {showSub && filteredUnis.length > 0 && (
+                  <View className="bg-[#1F2937] border border-white/10 border-t-0 rounded-b-xl mb-4 max-h-48 overflow-hidden">
+                    <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                      {filteredUnis.map((uni, idx) => (
+                        <TouchableOpacity 
+                          key={idx} 
+                          className="px-5 py-4 border-b border-white/5 bg-[#1F2937] active:bg-[#374151]"
+                          onPress={() => {
+                            setUniversity(uni.name);
+                            setShowSub(false);
+                          }}
+                        >
+                          <Text className="text-white text-sm font-medium">{uni.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
               </>
             )}
 
@@ -149,7 +208,7 @@ export default function AuthScreen() {
             <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest pl-2 mb-2">Email Address</Text>
             <TextInput 
               className="bg-[#1A2235] text-white px-5 py-4 rounded-xl border border-white/5 mb-4 font-medium" 
-              placeholder="e.g. student@university.edu" 
+              placeholder={isLogin ? "e.g. student@mq.edu.au" : "Must match your selected university"}
               value={email}
               onChangeText={setEmail}
               placeholderTextColor="#4B5563"
